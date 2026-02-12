@@ -1,0 +1,20 @@
+services:
+  chatbot:
+    build: .
+    container_name: chatbot-app
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_API_URL=${LLM_API_URL:-https://api.openai.com/v1/chat/completions}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+    volumes:
+      - chatbot_data:/app/data
+    command: >
+      sh -c "mkdir -p /app/data &&
+             ln -sf /app/data/chatbot.db /app/chatbot.db &&
+             python3 server.py"
+
+volumes:
+  chatbot_data:
