@@ -16,18 +16,16 @@ const state = {
   defaultSystemPrompt: 'You are a concise, helpful assistant.',
 };
 
-async function apiRequest(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
-    ...options,
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error ?? `Request failed: ${response.status}`);
-  }
-
-  return data;
+function createConversation() {
+  const id = crypto.randomUUID();
+  const createdAt = new Date();
+  return {
+    id,
+    title: 'New conversation',
+    createdAt,
+    messages: [],
+    systemPrompt: state.defaultSystemPrompt,
+  };
 }
 
 function getActiveConversation() {
@@ -39,13 +37,6 @@ function updateConversationTitle(conversation) {
   if (firstUser) {
     conversation.title = firstUser.content.slice(0, 40) || 'Conversation';
   }
-}
-
-async function persistConversationTitle(conversation) {
-  await apiRequest(`/api/conversations/${conversation.id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ title: conversation.title }),
-  });
 }
 
 function renderHistory() {
@@ -64,13 +55,8 @@ function renderHistory() {
       button.classList.add('active');
     }
 
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', () => {
       state.activeConversationId = conversation.id;
-      const data = await apiRequest(`/api/conversations/${conversation.id}/messages`);
-      conversation.messages = data.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      }));
       renderConversation();
       renderHistory();
     });
@@ -80,6 +66,7 @@ function renderHistory() {
 }
 
 function renderMessage(message, index) {
+  const activeConversation = getActiveConversation();
   const fragment = messageTemplate.content.cloneNode(true);
   const item = fragment.querySelector('.message');
   item.querySelector('.role').textContent = message.role;
@@ -91,6 +78,10 @@ function renderMessage(message, index) {
     regenerateBtn.addEventListener('click', () => {
       regenerateFrom(index);
     });
+  }
+
+  if (!activeConversation) {
+    return;
   }
 
   chatList.appendChild(fragment);
@@ -118,11 +109,18 @@ function getPayload(messages, systemPrompt) {
 
 async function queryLLM(messages, systemPrompt) {
   const payload = getPayload(messages, systemPrompt);
-  const data = await apiRequest('/api/chat', {
+
+  const response = await fetch('/api/chat', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages: payload }),
   });
 
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  const data = await response.json();
   return data.reply ?? 'No reply returned by API.';
 }
 
@@ -144,20 +142,8 @@ async function sendMessage() {
   sendBtn.textContent = 'Thinking…';
 
   try {
-    await apiRequest(`/api/conversations/${activeConversation.id}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ role: 'user', content: text }),
-    });
-
-    await persistConversationTitle(activeConversation);
-
     const assistantReply = await queryLLM(activeConversation.messages, activeConversation.systemPrompt);
     activeConversation.messages.push({ role: 'assistant', content: assistantReply });
-
-    await apiRequest(`/api/conversations/${activeConversation.id}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ role: 'assistant', content: assistantReply }),
-    });
   } catch (error) {
     activeConversation.messages.push({ role: 'assistant', content: `Error: ${error.message}` });
   } finally {
@@ -183,18 +169,8 @@ async function regenerateFrom(assistantIndex) {
   sendBtn.textContent = 'Regenerating…';
 
   try {
-    await apiRequest(`/api/conversations/${activeConversation.id}/messages`, {
-      method: 'PUT',
-      body: JSON.stringify({ messages: activeConversation.messages }),
-    });
-
     const assistantReply = await queryLLM(activeConversation.messages, activeConversation.systemPrompt);
     activeConversation.messages.push({ role: 'assistant', content: assistantReply });
-
-    await apiRequest(`/api/conversations/${activeConversation.id}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ role: 'assistant', content: assistantReply }),
-    });
   } catch (error) {
     activeConversation.messages.push({ role: 'assistant', content: `Error: ${error.message}` });
   } finally {
@@ -205,57 +181,12 @@ async function regenerateFrom(assistantIndex) {
   }
 }
 
-async function addNewConversation(makeActive = true) {
-  const data = await apiRequest('/api/conversations', {
-    method: 'POST',
-    body: JSON.stringify({
-      title: 'New conversation',
-      systemPrompt: state.defaultSystemPrompt,
-    }),
-  });
-
-  const conversation = {
-    id: data.conversation.id,
-    title: data.conversation.title,
-    systemPrompt: data.conversation.system_prompt,
-    messages: [],
-  };
-
+function addNewConversation(makeActive = true) {
+  const conversation = createConversation();
   state.conversations.unshift(conversation);
   if (makeActive) {
     state.activeConversationId = conversation.id;
   }
-  renderHistory();
-  renderConversation();
-}
-
-async function loadInitialData() {
-  const data = await apiRequest('/api/conversations');
-  const conversations = data.conversations ?? [];
-
-  if (!conversations.length) {
-    await addNewConversation(true);
-    return;
-  }
-
-  state.conversations = conversations.map((conversation) => ({
-    id: conversation.id,
-    title: conversation.title,
-    systemPrompt: conversation.system_prompt,
-    messages: [],
-  }));
-
-  state.activeConversationId = state.conversations[0].id;
-
-  const active = getActiveConversation();
-  if (active) {
-    const messagesData = await apiRequest(`/api/conversations/${active.id}/messages`);
-    active.messages = messagesData.messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
-  }
-
   renderHistory();
   renderConversation();
 }
@@ -269,8 +200,8 @@ userInput.addEventListener('keydown', (event) => {
   }
 });
 
-newChatBtn.addEventListener('click', async () => {
-  await addNewConversation(true);
+newChatBtn.addEventListener('click', () => {
+  addNewConversation(true);
   userInput.focus();
 });
 
@@ -280,25 +211,16 @@ openSystemPrompt.addEventListener('click', () => {
   systemPromptModal.showModal();
 });
 
-saveSystemPrompt.addEventListener('click', async () => {
+saveSystemPrompt.addEventListener('click', () => {
   const activeConversation = getActiveConversation();
   const promptValue = systemPromptInput.value.trim();
 
-  if (!activeConversation) {
-    return;
+  if (activeConversation) {
+    activeConversation.systemPrompt = promptValue;
   }
 
-  activeConversation.systemPrompt = promptValue;
   state.defaultSystemPrompt = promptValue || state.defaultSystemPrompt;
-
-  await apiRequest(`/api/conversations/${activeConversation.id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ systemPrompt: promptValue }),
-  });
-
   renderHistory();
 });
 
-loadInitialData().catch((error) => {
-  chatList.innerHTML = `<article class="message"><p class="content">Failed to load data: ${error.message}</p></article>`;
-});
+addNewConversation(true);
