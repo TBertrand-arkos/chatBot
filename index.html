@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM Chat UI</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="layout-shell">
+      <aside class="history-panel">
+        <div class="history-header">
+          <h2>History</h2>
+          <button id="newChatBtn" class="secondary-button">New chat</button>
+        </div>
+        <section id="historyList" class="history-list" aria-label="Conversation history"></section>
+      </aside>
+
+      <section class="chat-panel">
+        <header class="topbar">
+          <h1>Chat Assistant</h1>
+          <button id="openSystemPrompt" class="ghost-button">System settings</button>
+        </header>
+
+        <section id="chatList" class="chat-list" aria-live="polite"></section>
+
+        <section class="composer">
+          <div class="composer-row">
+            <textarea id="userInput" rows="3" placeholder="Message the assistant…"></textarea>
+            <button id="sendBtn" class="primary-button">Send</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="systemPromptModal" class="modal">
+      <form method="dialog" class="modal-card">
+        <h2>System Instruction</h2>
+        <p class="helper-text">This prompt is added at the beginning of a conversation.</p>
+
+        <label for="systemPromptInput">Opening system prompt</label>
+        <textarea id="systemPromptInput" rows="6" placeholder="You are a helpful assistant that..."></textarea>
+
+        <div class="modal-actions">
+          <button value="cancel" class="ghost-button">Close</button>
+          <button id="saveSystemPrompt" value="default" class="primary-button">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="messageTemplate">
+      <article class="message">
+        <header>
+          <span class="role"></span>
+        </header>
+        <p class="content"></p>
+        <button class="secondary-button regenerate-btn" hidden>Regenerate from this point</button>
+      </article>
+    </template>
+
+    <template id="historyItemTemplate">
+      <button class="history-item" type="button">
+        <span class="history-title"></span>
+        <span class="history-meta"></span>
+      </button>
+    </template>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
